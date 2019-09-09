@@ -4,17 +4,29 @@ import com.mmgg.formework.beans.BeanDefinition;
 import com.mmgg.formework.context.support.BeanDefinitionReader;
 import com.mmgg.formework.core.BeanFactory;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * @author 161196
+ */
 public class ApplicationContext implements BeanFactory {
 
     private String[] configLocations;
 
     private BeanDefinitionReader reader;
 
+    /**
+     * beanDefinittionMap用来保存配置信息
+     */
     private Map<String, BeanDefinition> beanDefinitionMap = new ConcurrentHashMap<>();
+
+    /**
+     * 用来保证注册是单利的容器
+     */
+    private Map<String,Object> beanCaceMap = new HashMap<>();
 
     public ApplicationContext(String ... configLocations){
         this.configLocations=configLocations;
@@ -81,11 +93,51 @@ public class ApplicationContext implements BeanFactory {
      * 装饰器模式：
      * 1.保留原来的OOP关系
      * 2.我需要对它进行扩展,增强(为了以后AOP打基础)
-     * @param name
+     * @param beanName
      * @return
      */
     @Override
-    public Object getBean(String name) {
+    public Object getBean(String beanName) {
+
+        BeanDefinition beanDefinition = this.beanDefinitionMap.get(beanName);
+
+        String className = beanDefinition.getBeanClassName();
+
+        try{
+            Object instance = instantionBean(beanDefinition);
+            if(null == instance){
+                return null;
+            }
+
+
+        }catch (Exception e){
+            e.printStackTrace();
+        }
         return null;
     }
+
+    /**
+     * 传一个BeanDefinition，就返回一个实例Bean
+     * @param beanDefinition
+     * @return
+     */
+    private Object instantionBean(BeanDefinition beanDefinition){
+        Object instance;
+        String className = beanDefinition.getBeanClassName();
+        try {
+            //因为根据Class才能确定一个类是否有实例
+            if(!this.beanCaceMap.containsKey(className)){
+                instance = this.beanCaceMap.get(className);
+            }else{
+                Class<?> clazz = Class.forName(className);
+                instance = clazz.newInstance();
+                this.beanCaceMap.put(className,instance);
+            }
+            return instance;
+        }catch (Exception e){
+            e.printStackTrace();
+        }
+        return null;
+    }
+
 }

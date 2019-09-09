@@ -5,5 +5,10 @@ package com.mmgg.formework.core;
  */
 public interface BeanFactory {
 
-    Object getBean(String name);
+    /**
+     * 根据BeanName从IOC容器中获取一个实例Bean
+     * @param beanName
+     * @return
+     */
+    Object getBean(String beanName);
 }
