@@ -59,7 +59,7 @@ public class BeanDefinitionReader {
     }
 
     public List<String> loadBeanDefinitions(){
-        return null;
+        return this.registryBeanClasses;
     }
 
     /**

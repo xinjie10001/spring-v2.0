@@ -1,9 +1,16 @@
 package com.mmgg.formework.context;
 
+import com.mmgg.formework.annotation.Autowried;
+import com.mmgg.formework.annotation.Controller;
+import com.mmgg.formework.annotation.Service;
 import com.mmgg.formework.beans.BeanDefinition;
+import com.mmgg.formework.beans.BeanPostProcessor;
+import com.mmgg.formework.beans.BeanWrapper;
 import com.mmgg.formework.context.support.BeanDefinitionReader;
 import com.mmgg.formework.core.BeanFactory;
+import com.mmgg.formework.webmvc.controller.TestController;
 
+import java.lang.reflect.Field;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -22,6 +29,11 @@ public class ApplicationContext implements BeanFactory {
      * beanDefinittionMap用来保存配置信息
      */
     private Map<String, BeanDefinition> beanDefinitionMap = new ConcurrentHashMap<>();
+
+    /**
+     * 用来存储所有被代理的过的对象
+     */
+    private Map<String,BeanWrapper> beanWrapperMap = new ConcurrentHashMap<>();
 
     /**
      * 用来保证注册是单利的容器
@@ -44,6 +56,53 @@ public class ApplicationContext implements BeanFactory {
         doRegisty(beanDefinitions);
 
         //依赖注入(lazy-init=false),要是执行依赖注入的方法，在这里自动调用getBean的方法
+        doAutowrited();
+        TestController testController = (TestController) this.getBean("testController");
+        testController.query(null,null,"wangxinjie");
+        System.out.println();
+    }
+
+    /**
+     * 开始执行自动化的依赖注入
+     */
+    private void doAutowrited() {
+        for(Map.Entry<String,BeanDefinition> beanDefinitionEntry:this.beanDefinitionMap.entrySet()){
+            String beanName = beanDefinitionEntry.getKey();
+            if(!beanDefinitionEntry.getValue().isLazyInit()){
+                getBean(beanName);
+            }
+        }
+
+        for(Map.Entry<String,BeanWrapper> beanWrapperEntry: this.beanWrapperMap.entrySet()){
+             populateBean(beanWrapperEntry.getKey(),beanWrapperEntry.getValue().getWrappedInstance());
+        }
+    }
+
+    public void populateBean(String beanName,Object instance){
+        Class clazz = instance.getClass();
+        if(!clazz.isAnnotationPresent(Controller.class)||
+             clazz.isAnnotationPresent(Service.class)){
+            return;
+        }
+
+        Field[] fields = clazz.getDeclaredFields();
+        for(Field field : fields){
+            if(!field.isAnnotationPresent(Autowried.class)){continue;}
+            Autowried autowried = field.getAnnotation(Autowried.class);
+
+            String autowiredBeanName = autowried.value().trim();
+
+            if("".equals(autowiredBeanName)){
+                autowiredBeanName = field.getType().getName();
+            }
+            field.setAccessible(true);
+
+            try {
+                field.set(instance,this.beanWrapperMap.get(autowiredBeanName).getWrappedInstance());
+            } catch (IllegalAccessException e) {
+                e.printStackTrace();
+            }
+        }
     }
 
     /**
@@ -104,12 +163,29 @@ public class ApplicationContext implements BeanFactory {
         String className = beanDefinition.getBeanClassName();
 
         try{
+
+            //生成通知事件
+            BeanPostProcessor beanPostProcessor = new BeanPostProcessor();
+
             Object instance = instantionBean(beanDefinition);
             if(null == instance){
                 return null;
             }
 
+            //在实例初始化以前调用一次
+            beanPostProcessor.postProcessBefornInitialization(instance,beanName);
 
+            BeanWrapper beanWrapper = new BeanWrapper(instance);
+            beanWrapper.setPostProcessor(beanPostProcessor);
+            this.beanWrapperMap.put(beanName,beanWrapper);
+
+            //在实例初始化之后调用一次
+            beanPostProcessor.postProcessAfterInitialization(instance,beanName);
+
+            // populateBean(beanName,instance);
+
+            //通过这样一调用,相当于给我们自己留有可操作的空间
+            return this.beanWrapperMap.get(beanName).getWrappedInstance();
         }catch (Exception e){
             e.printStackTrace();
         }
@@ -126,7 +202,7 @@ public class ApplicationContext implements BeanFactory {
         String className = beanDefinition.getBeanClassName();
         try {
             //因为根据Class才能确定一个类是否有实例
-            if(!this.beanCaceMap.containsKey(className)){
+            if(this.beanCaceMap.containsKey(className)){
                 instance = this.beanCaceMap.get(className);
             }else{
                 Class<?> clazz = Class.forName(className);
